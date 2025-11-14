@@ -330,7 +330,7 @@ function update(dt) {
   // Donut collision: +1 life
   if (donut.active) {
     const dRect = { x: donut.x, y: donut.y, w: donut.w, h: donut.h };
-    if (rectsOverlap(playerRect, dRect)) {
+    if (circleRectOverlap(playerCenterX, playerCenterY, playerRadius, dRect)) {
       donut.active = false;
       if (lives < MAX_LIVES) {
         lives += 1;
