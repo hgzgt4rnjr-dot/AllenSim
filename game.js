@@ -28,7 +28,7 @@ let gameOver = false;
 
 const PLAYER_WIDTH = 80;
 const PLAYER_HEIGHT = 95;
-const FINGER_OFFSET_Y = 100; // Allen sits 100px above the finger
+const FINGER_OFFSET_Y = 0; // Allen control spacing
 
 let player = {
   x: WIDTH / 2 - PLAYER_WIDTH / 2,
@@ -39,7 +39,7 @@ let player = {
   invTimer: 0
 };
 
-let lives = 3;
+let lives = 0;
 const MAX_LIVES = 5;
 
 let score = 0;          // in seconds, continuous
@@ -93,7 +93,7 @@ function loadHighScore() {
 
 function saveHighScore() {
   if (score > highScore) {
-    highScore = score;
+    highScore = Math.floor(score);
     localStorage.setItem("allen_high_score", String(highScore));
   }
 }
@@ -136,7 +136,7 @@ function updateControl(clientX, clientY) {
 
   // Relative movement from original position
   player.x = playerStartX + dx;
-  player.y = playerStartY + dy - FINGER_OFFSET_Y; // keep Allen above finger
+  player.y = playerStartY + dy; 
 
   // clamp to screen
   player.x = clamp(player.x, 0, WIDTH - player.w);
@@ -209,7 +209,7 @@ function startOrRestart() {
   gameOver = false;
   score = 0;
   lastScoreInt = 0;
-  lives = 3;
+  lives = 0;
 
   player.invincible = false;
   player.invTimer = 0;
