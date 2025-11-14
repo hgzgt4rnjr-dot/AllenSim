@@ -28,7 +28,7 @@ let gameOver = false;
 
 const PLAYER_WIDTH = 80;
 const PLAYER_HEIGHT = 95;
-const FINGER_OFFSET_Y = 110; // how far ABOVE the finger Allen should be
+const FINGER_OFFSET_Y = 100; // Allen sits 100px above the finger
 
 let player = {
   x: WIDTH / 2 - PLAYER_WIDTH / 2,
@@ -39,31 +39,41 @@ let player = {
   invTimer: 0
 };
 
-let lives = 2; // donuts = lives
-const MAX_LIVES = 3;
+let lives = 3;
+const MAX_LIVES = 5;
 
 let score = 0;
 let highScore = 0;
+let lastTimestamp = null;
 
-// Enemies (Keirans flying across screen)
-const ENEMY_COUNT = 4;
-const ENEMY_WIDTH = 110;
-const ENEMY_HEIGHT = 130;
+// Difficulty tracking (for events)
+let lastDonutScoreStep = -1;   // floor(score / 5) last used
+let lastKeiranScoreStep = -1;  // floor(score / 10) last used
 
-let enemies = [];
+// ====== Spikes ======
+const SPIKE_COUNT = 8;
+const SPIKE_SIZE = 40;
 
-// Donut powerup
+let spikes = [];
+
+// ====== Keiran ======
+let keiran = {
+  active: false,
+  x: 0,
+  y: 0,
+  w: 130,
+  h: 140,
+  baseSpeed: 150
+};
+
+// ====== Donut ======
 let donut = {
   active: false,
   x: 0,
   y: 0,
   w: 70,
-  h: 70,
-  timer: 0,
-  cooldown: 8 // seconds between spawns
+  h: 70
 };
-
-let lastTimestamp = null;
 
 // ====== Utility ======
 function clamp(v, min, max) {
@@ -81,6 +91,10 @@ function rectsOverlap(a, b) {
   );
 }
 
+function randRange(min, max) {
+  return min + Math.random() * (max - min);
+}
+
 function loadHighScore() {
   const stored = localStorage.getItem("allen_high_score");
   highScore = stored ? parseInt(stored, 10) : 0;
@@ -93,24 +107,18 @@ function saveHighScore() {
   }
 }
 
-// ====== Init enemies ======
-function resetEnemies() {
-  enemies = [];
-  for (let i = 0; i < ENEMY_COUNT; i++) {
-    spawnEnemy(i);
+// ====== Init spikes ======
+function initSpikes() {
+  spikes = [];
+  for (let i = 0; i < SPIKE_COUNT; i++) {
+    const x = randRange(0, WIDTH - SPIKE_SIZE);
+    const y = randRange(0, HEIGHT - SPIKE_SIZE);
+    let vx = randRange(-120, 120);
+    let vy = randRange(-120, 120);
+    if (Math.abs(vx) < 40) vx = vx < 0 ? -40 : 40;
+    if (Math.abs(vy) < 40) vy = vy < 0 ? -40 : 40;
+    spikes.push({ x, y, w: SPIKE_SIZE, h: SPIKE_SIZE, vx, vy });
   }
-}
-
-function spawnEnemy(i) {
-  const speed = 120 + Math.random() * 80; // px/s
-  const yPadding = 60;
-  enemies[i] = {
-    x: WIDTH + Math.random() * 300,
-    y: yPadding + Math.random() * (HEIGHT - 2 * yPadding - ENEMY_HEIGHT),
-    w: ENEMY_WIDTH,
-    h: ENEMY_HEIGHT,
-    speed: speed
-  };
 }
 
 // ====== Player control (touch + mouse) ======
@@ -122,7 +130,6 @@ function movePlayerToClientPoint(clientX, clientY) {
   player.x = x - player.w / 2;
   player.y = y - player.h / 2 - FINGER_OFFSET_Y;
 
-  // keep Allen fully on screen
   player.x = clamp(player.x, 0, WIDTH - player.w);
   player.y = clamp(player.y, 0, HEIGHT - player.h);
 }
@@ -153,7 +160,7 @@ canvas.addEventListener(
   { passive: false }
 );
 
-// Mouse (for desktop testing)
+// Mouse (desktop)
 let mouseDown = false;
 canvas.addEventListener("mousedown", (e) => {
   if (!gameStarted || gameOver) {
@@ -177,23 +184,58 @@ function startOrRestart() {
   gameStarted = true;
   gameOver = false;
   score = 0;
-  lives = 2;
+  lives = 3;
   player.invincible = false;
   player.invTimer = 0;
+
   donut.active = false;
-  donut.timer = 0;
-  resetEnemies();
+  keiran.active = false;
+  lastDonutScoreStep = -1;
+  lastKeiranScoreStep = -1;
+
+  initSpikes();
   lastTimestamp = null;
 }
 
-// ====== Main update loop ======
+// ====== Spawn helpers ======
+function spawnDonut() {
+  donut.active = true;
+  donut.x = randRange(40, WIDTH - 40 - donut.w);
+  donut.y = randRange(60, HEIGHT - 60 - donut.h);
+}
+
+function spawnKeiran() {
+  keiran.active = true;
+
+  // Spawn at a random edge
+  const edge = Math.floor(Math.random() * 4); // 0: left, 1: right, 2: top, 3: bottom
+  if (edge === 0) {
+    keiran.x = -keiran.w - 20;
+    keiran.y = randRange(40, HEIGHT - 40 - keiran.h);
+  } else if (edge === 1) {
+    keiran.x = WIDTH + 20;
+    keiran.y = randRange(40, HEIGHT - 40 - keiran.h);
+  } else if (edge === 2) {
+    keiran.x = randRange(40, WIDTH - 40 - keiran.w);
+    keiran.y = -keiran.h - 20;
+  } else {
+    keiran.x = randRange(40, WIDTH - 40 - keiran.w);
+    keiran.y = HEIGHT + 20;
+  }
+}
+
+// ====== Main update ======
 function update(dt) {
   if (!gameStarted || gameOver) return;
 
-  // score in whole seconds
+  // Update score
   score += dt;
 
-  // invincibility timer
+  // Difficulty scaling
+  const speedStep = Math.floor(score / 10); // 0–9 => 0, 10–19 => 1, etc.
+  const speedMultiplier = 1 + speedStep * 0.25;
+
+  // Invincibility timer (for spikes only)
   if (player.invincible) {
     player.invTimer -= dt;
     if (player.invTimer <= 0) {
@@ -202,63 +244,111 @@ function update(dt) {
     }
   }
 
-  // Move enemies
-  for (let i = 0; i < enemies.length; i++) {
-    const e = enemies[i];
-    e.x -= e.speed * dt;
-    if (e.x + e.w < -50) {
-      // off screen, respawn
-      spawnEnemy(i);
+  // Move spikes
+  for (const s of spikes) {
+    s.x += s.vx * dt * speedMultiplier;
+    s.y += s.vy * dt * speedMultiplier;
+
+    // bounce off walls
+    if (s.x < 0) {
+      s.x = 0;
+      s.vx *= -1;
+    } else if (s.x + s.w > WIDTH) {
+      s.x = WIDTH - s.w;
+      s.vx *= -1;
+    }
+
+    if (s.y < 0) {
+      s.y = 0;
+      s.vy *= -1;
+    } else if (s.y + s.h > HEIGHT) {
+      s.y = HEIGHT - s.h;
+      s.vy *= -1;
     }
   }
 
-  // Donut spawn logic
-  donut.timer += dt;
-  if (!donut.active && donut.timer >= donut.cooldown) {
-    donut.active = true;
-    donut.timer = 0;
-    donut.x = 40 + Math.random() * (WIDTH - 80 - donut.w);
-    donut.y = 40 + Math.random() * (HEIGHT - 80 - donut.h);
+  // Donut spawn every 5 points
+  const donutStep = Math.floor(score / 5); // 0,1,2... each = a new event
+  if (donutStep > lastDonutScoreStep) {
+    lastDonutScoreStep = donutStep;
+    if (!donut.active && donutStep > 0) {
+      spawnDonut();
+    }
   }
 
-  // Collisions
+  // Keiran spawn every 10 points
+  const keiranStep = Math.floor(score / 10);
+  if (keiranStep > lastKeiranScoreStep) {
+    lastKeiranScoreStep = keiranStep;
+    if (!keiran.active && keiranStep > 0) {
+      keiran.baseSpeed = 150 + keiranStep * 30;
+      spawnKeiran();
+    }
+  }
+
+  // Keiran movement: go out of his way to hunt Allen
+  if (keiran.active) {
+    const px = player.x + player.w / 2;
+    const py = player.y + player.h / 2;
+    const kx = keiran.x + keiran.w / 2;
+    const ky = keiran.y + keiran.h / 2;
+
+    let dx = px - kx;
+    let dy = py - ky;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+    dx /= dist;
+    dy /= dist;
+
+    const speed = keiran.baseSpeed * speedMultiplier;
+    keiran.x += dx * speed * dt;
+    keiran.y += dy * speed * dt;
+  }
+
   const playerRect = { x: player.x, y: player.y, w: player.w, h: player.h };
 
-  // Enemy collisions
-  for (const e of enemies) {
-    const enemyRect = { x: e.x, y: e.y, w: e.w, h: e.h };
-    if (!player.invincible && rectsOverlap(playerRect, enemyRect)) {
+  // Spike collisions: lose 1 life (with invincibility window)
+  for (const s of spikes) {
+    const spikeRect = { x: s.x, y: s.y, w: s.w, h: s.h };
+    if (rectsOverlap(playerRect, spikeRect) && !player.invincible) {
       lives -= 1;
       player.invincible = true;
-      player.invTimer = 1.3; // seconds
+      player.invTimer = 1.0; // 1 sec of invincibility vs spikes
       if (lives < 0) {
         saveHighScore();
         gameOver = true;
-        break;
       }
+      break;
     }
   }
 
-  // Donut collision (gain life)
+  // Donut collision: +1 life
   if (donut.active) {
     const dRect = { x: donut.x, y: donut.y, w: donut.w, h: donut.h };
     if (rectsOverlap(playerRect, dRect)) {
       donut.active = false;
-      donut.timer = 0;
       if (lives < MAX_LIVES) {
         lives += 1;
       }
     }
   }
+
+  // Keiran collision: instant death
+  if (keiran.active) {
+    const kRect = { x: keiran.x, y: keiran.y, w: keiran.w, h: keiran.h };
+    if (rectsOverlap(playerRect, kRect)) {
+      saveHighScore();
+      gameOver = true;
+    }
+  }
 }
 
 // ====== Draw ======
-function draw() {
-  // background
+function drawBackground() {
   ctx.fillStyle = "#000000";
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-  // faint grid or background lines
+  // faint grid
   ctx.strokeStyle = "#101010";
   ctx.lineWidth = 1;
   for (let x = 0; x < WIDTH; x += 40) {
@@ -273,42 +363,38 @@ function draw() {
     ctx.lineTo(WIDTH, y);
     ctx.stroke();
   }
+}
 
-  // Keiran enemies
-  for (const e of enemies) {
-    ctx.drawImage(assets.keiran, e.x, e.y, e.w, e.h);
+function drawSpikes() {
+  ctx.fillStyle = "#ff5252";
+  for (const s of spikes) {
+    // draw triangle spike
+    ctx.beginPath();
+    ctx.moveTo(s.x + s.w / 2, s.y);           // top
+    ctx.lineTo(s.x, s.y + s.h);              // bottom left
+    ctx.lineTo(s.x + s.w, s.y + s.h);        // bottom right
+    ctx.closePath();
+    ctx.fill();
   }
+}
 
-  // Donut
-  if (donut.active) {
-    ctx.drawImage(assets.donut, donut.x, donut.y, donut.w, donut.h);
-  }
-
-  // Player (Allen)
-  if (player.invincible) {
-    // flicker while invincible
-    if (Math.floor(player.invTimer * 10) % 2 === 0) {
-      ctx.globalAlpha = 0.35;
-    }
-  }
-  ctx.drawImage(assets.allen, player.x, player.y, player.w, player.h);
-  ctx.globalAlpha = 1;
-
-  // HUD
+function drawHUD() {
   ctx.fillStyle = "#ffffff";
   ctx.font = "20px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+  ctx.textAlign = "left";
   ctx.fillText("Score: " + Math.floor(score), 20, 30);
   ctx.fillText("High: " + Math.floor(highScore), 20, 55);
 
-  // lives as small donuts
+  // Lives as donuts
   const lifeSize = 30;
-  for (let i = 0; i <= lives; i++) {
+  for (let i = 0; i < Math.max(0, lives + 1); i++) { // lives can be -1 briefly, clamp
     const x = WIDTH - (i + 1) * (lifeSize + 10);
     const y = 20;
     ctx.drawImage(assets.donut, x, y, lifeSize, lifeSize);
   }
+}
 
-  // Start / instructions overlay
+function drawOverlays() {
   if (!gameStarted && !gameOver) {
     ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -316,17 +402,17 @@ function draw() {
     ctx.fillStyle = "#ffffff";
     ctx.font = "32px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("Allen Simulator", WIDTH / 2, HEIGHT / 2 - 40);
+    ctx.fillText("Allen Simulator", WIDTH / 2, HEIGHT / 2 - 60);
 
     ctx.font = "20px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-    ctx.fillText("Drag your finger to move Allen.", WIDTH / 2, HEIGHT / 2);
-    ctx.fillText("Avoid Keiran heads, collect donuts.", WIDTH / 2, HEIGHT / 2 + 30);
-    ctx.fillText("Tap to start.", WIDTH / 2, HEIGHT / 2 + 70);
+    ctx.fillText("Drag your finger to move Allen (he sits above your finger).", WIDTH / 2, HEIGHT / 2 - 20);
+    ctx.fillText("Every 5 points: donut = +1 life.", WIDTH / 2, HEIGHT / 2 + 10);
+    ctx.fillText("Every 10 points: Keiran spawns and hunts you.", WIDTH / 2, HEIGHT / 2 + 40);
+    ctx.fillText("Avoid moving spikes and Keiran. Tap to start.", WIDTH / 2, HEIGHT / 2 + 80);
 
     ctx.textAlign = "left";
   }
 
-  // Game over overlay
   if (gameOver) {
     ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -346,6 +432,36 @@ function draw() {
   }
 }
 
+function draw() {
+  drawBackground();
+
+  // Spikes
+  drawSpikes();
+
+  // Donut
+  if (donut.active) {
+    ctx.drawImage(assets.donut, donut.x, donut.y, donut.w, donut.h);
+  }
+
+  // Keiran
+  if (keiran.active) {
+    ctx.drawImage(assets.keiran, keiran.x, keiran.y, keiran.w, keiran.h);
+  }
+
+  // Player (Allen)
+  if (player.invincible) {
+    if (Math.floor(player.invTimer * 10) % 2 === 0) {
+      ctx.globalAlpha = 0.4;
+    }
+  }
+  ctx.drawImage(assets.allen, player.x, player.y, player.w, player.h);
+  ctx.globalAlpha = 1;
+
+  // HUD + overlays
+  drawHUD();
+  drawOverlays();
+}
+
 // ====== Main loop ======
 function loop(timestamp) {
   if (lastTimestamp === null) lastTimestamp = timestamp;
@@ -363,9 +479,9 @@ function onAssetLoaded() {
   assetsLoaded += 1;
   statusEl.textContent = `Loading… ${assetsLoaded}/${totalAssets}`;
   if (assetsLoaded === totalAssets) {
-    statusEl.textContent = "Drag Allen to start. Tap screen to begin.";
+    statusEl.textContent = "Tap to start. Drag to move Allen.";
     loadHighScore();
-    resetEnemies();
+    initSpikes();
     requestAnimationFrame(loop);
   }
 }
