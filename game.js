@@ -349,10 +349,7 @@ function update(dt) {
   }
 
   // Mirror HUD into status element so you always see score/lives
-  statusEl.textContent = `Score: ${scoreInt}   High: ${highScore}   Lives: ${Math.max(
-    0,
-    lives + 1
-  )}`;
+  statusEl.textContent = "";
 }
 
 // ====== Draw ======
@@ -404,7 +401,7 @@ function drawHUD() {
   for (let i = 0; i < Math.max(0, lives + 1); i++) {
     const x = WIDTH - (i + 1) * (lifeSize + 10);
     const y = 20;
-    ctx.drawImage(assets.donut, x, y, lifeSize, lifeSize);
+    ctx.drawImage(assets.allen, x, y, lifeSize, lifeSize);
   }
 }
 
