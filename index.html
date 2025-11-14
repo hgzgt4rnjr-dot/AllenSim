@@ -21,6 +21,7 @@
       --bg: #000000;
       --fg: #ffffff;
       --accent: #00c853;
+      --danger: #ff5252;
     }
 
     * {
@@ -44,13 +45,13 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 12px;
+      gap: 8px;
     }
 
     canvas {
       border: 2px solid #333;
       background: #000;
-      touch-action: none; /* avoid scroll on touch controls */
+      touch-action: none; /* stops page scrolling while dragging */
     }
 
     #status {
@@ -62,13 +63,12 @@
 </head>
 <body>
   <div id="wrapper">
-    <!-- Game canvas -->
     <canvas id="game" width="800" height="600"></canvas>
-    <div id="status">Loading Allen, Donut &amp; Keiran…</div>
+    <div id="status">Loading…</div>
   </div>
 
   <script>
-    // Register service worker for offline/PWA
+    // Register service worker (for offline / PWA)
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("./service-worker.js").catch(err => {
@@ -76,145 +76,9 @@
         });
       });
     }
-
-    // Simple asset loader for your 3 images
-    const assets = {
-      allen: new Image(),
-      donut: new Image(),
-      keiran: new Image()
-    };
-
-    const assetPaths = {
-      allen: "Allens.png", // make sure filenames in repo match these exactly
-      donut: "Donut.png",
-      keiran: "Keiran.png"
-    };
-
-    let loadedCount = 0;
-    const totalAssets = Object.keys(assets).length;
-    const statusEl = document.getElementById("status");
-    const canvas = document.getElementById("game");
-    const ctx = canvas.getContext("2d");
-
-    function onAssetLoaded() {
-      loadedCount += 1;
-      if (loadedCount === totalAssets) {
-        statusEl.textContent = "Loaded. Drag to move Allen.";
-        startGame();
-      } else {
-        statusEl.textContent = `Loading… ${loadedCount}/${totalAssets}`;
-      }
-    }
-
-    for (const key in assets) {
-      assets[key].onload = onAssetLoaded;
-      assets[key].onerror = () => {
-        console.error("Failed to load", key, assetPaths[key]);
-        onAssetLoaded();
-      };
-      assets[key].src = assetPaths[key];
-    }
-
-    // ------------ Simple game demo -------------
-    let allenW = 70;
-    let allenH = 80;
-    let allenX = canvas.width / 2 - allenW / 2;
-    let allenY = canvas.height / 2 - allenH / 2;
-    const FINGER_OFFSET_Y = 40; // Allen sits above finger
-
-    let score = 0;
-    let lastTime = null;
-
-    function clampAllen() {
-      if (allenX < 0) allenX = 0;
-      if (allenY < 0) allenY = 0;
-      if (allenX + allenW > canvas.width) allenX = canvas.width - allenW;
-      if (allenY + allenH > canvas.height) allenY = canvas.height - allenH;
-    }
-
-    function setAllenFromPoint(clientX, clientY) {
-      const rect = canvas.getBoundingClientRect();
-      const x = clientX - rect.left;
-      const y = clientY - rect.top;
-
-      allenX = x - allenW / 2;
-      // move Allen ABOVE the finger so you can see him
-      allenY = y - allenH / 2 - FINGER_OFFSET_Y;
-
-      clampAllen();
-    }
-
-    // Touch controls
-    canvas.addEventListener("touchstart", (e) => {
-      e.preventDefault();
-      const t = e.touches[0];
-      if (t) setAllenFromPoint(t.clientX, t.clientY);
-    }, { passive: false });
-
-    canvas.addEventListener("touchmove", (e) => {
-      e.preventDefault();
-      const t = e.touches[0];
-      if (t) setAllenFromPoint(t.clientX, t.clientY);
-    }, { passive: false });
-
-    // Mouse drag support (for desktop testing)
-    let mouseDown = false;
-    canvas.addEventListener("mousedown", (e) => {
-      mouseDown = true;
-      setAllenFromPoint(e.clientX, e.clientY);
-    });
-    window.addEventListener("mouseup", () => {
-      mouseDown = false;
-    });
-    canvas.addEventListener("mousemove", (e) => {
-      if (mouseDown) {
-        setAllenFromPoint(e.clientX, e.clientY);
-      }
-    });
-
-    function startGame() {
-      function loop(timestamp) {
-        if (lastTime === null) lastTime = timestamp;
-        const dt = (timestamp - lastTime) / 1000;
-        lastTime = timestamp;
-
-        // Update score over time
-        score += dt;
-
-        // Clear screen
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // Background tint
-        ctx.fillStyle = "#000000";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        // Draw Keiran in bottom-right
-        const keiranW = 120;
-        const keiranH = 140;
-        ctx.drawImage(
-          assets.keiran,
-          canvas.width - keiranW - 20,
-          canvas.height - keiranH - 20,
-          keiranW,
-          keiranH
-        );
-
-        // Draw donut top-left
-        ctx.drawImage(assets.donut, 20, 50, 60, 60);
-
-        // Draw Allen (player)
-        ctx.drawImage(assets.allen, allenX, allenY, allenW, allenH);
-
-        // HUD: score text
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "20px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-        ctx.fillText("Score: " + Math.floor(score), 20, 25);
-
-        requestAnimationFrame(loop);
-      }
-
-      requestAnimationFrame(loop);
-    }
   </script>
+
+  <!-- Main game logic -->
+  <script src="game.js"></script>
 </body>
 </html>
