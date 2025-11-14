@@ -278,8 +278,8 @@ function update(dt) {
     if (scoreInt > 0 && scoreInt % 10 === 0) {
       spawnKeiran();
       // Every 10 points, also speed up spikes and Keiran slightly
-      spikeSpeed += 20;
-      enemySpeed += 25;
+      spikeSpeed += 60;
+      enemySpeed += 90;
     }
 
     // High score update
