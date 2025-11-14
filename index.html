@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Allen Simulator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- iOS PWA hints -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-title" content="AllenSim" />
+
+  <!-- PWA manifest -->
+  <link rel="manifest" href="manifest.webmanifest" />
+
+  <!-- iOS icon fallback -->
+  <link rel="apple-touch-icon" href="allen-icon-192.png" />
+
+  <style>
+    :root {
+      --bg: #000000;
+      --fg: #ffffff;
+      --accent: #00c853;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    #wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    canvas {
+      border: 2px solid #333;
+      background: #000;
+      touch-action: none; /* avoid scroll on touch controls */
+    }
+
+    #status {
+      font-size: 0.9rem;
+      color: #aaaaaa;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div id="wrapper">
+    <!-- Game canvas -->
+    <canvas id="game" width="800" height="600"></canvas>
+    <div id="status">Loading Allen, Donut &amp; Keiran…</div>
+  </div>
+
+  <script>
+    // Register service worker for offline/PWA
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./service-worker.js").catch(err => {
+          console.warn("SW registration failed:", err);
+        });
+      });
+    }
+
+    // Simple asset loader for your 3 images
+    const assets = {
+      allen: new Image(),
+      donut: new Image(),
+      keiran: new Image()
+    };
+
+    const assetPaths = {
+      allen: "Allens.png",
+      donut: "Donut.png",
+      keiran: "Keiran.png"
+    };
+
+    let loadedCount = 0;
+    const totalAssets = Object.keys(assets).length;
+    const statusEl = document.getElementById("status");
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    function onAssetLoaded() {
+      loadedCount += 1;
+      if (loadedCount === totalAssets) {
+        statusEl.textContent = "Loaded. Tap/drag to move Allen.";
+        startDemo(); // placeholder for your real game.js logic
+      } else {
+        statusEl.textContent = `Loading… ${loadedCount}/${totalAssets}`;
+      }
+    }
+
+    // Hook load events
+    for (const key in assets) {
+      assets[key].onload = onAssetLoaded;
+      assets[key].onerror = () => {
+        console.error("Failed to load", key, assetPaths[key]);
+        onAssetLoaded();
+      };
+      assets[key].src = assetPaths[key];
+    }
+
+    // --------- Temporary demo using the 3 images ----------
+    // You can replace ALL of this with your real game logic in game.js later.
+    let allenX = canvas.width / 2;
+    let allenY = canvas.height / 2;
+    const allenW = 70;
+    const allenH = 80;
+
+    // Touch / mouse controls: move Allen to finger/ cursor
+    function setAllenFromPoint(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+
+      allenX = x - allenW / 2;
+      allenY = y - allenH / 2;
+    }
+
+    canvas.addEventListener("touchmove", (e) => {
+      e.preventDefault();
+      const t = e.touches[0];
+      if (t) setAllenFromPoint(t.clientX, t.clientY);
+    }, { passive: false });
+
+    canvas.addEventListener("touchstart", (e) => {
+      e.preventDefault();
+      const t = e.touches[0];
+      if (t) setAllenFromPoint(t.clientX, t.clientY);
+    }, { passive: false });
+
+    canvas.addEventListener("mousemove", (e) => {
+      if (e.buttons & 1) { // left mouse drag
+        setAllenFromPoint(e.clientX, e.clientY);
+      }
+    });
+
+    function startDemo() {
+      function loop() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw Keiran in the background
+        const keiranW = 120;
+        const keiranH = 140;
+        ctx.drawImage(
+          assets.keiran,
+          canvas.width - keiranW - 20,
+          canvas.height - keiranH - 20,
+          keiranW,
+          keiranH
+        );
+
+        // Draw donut somewhere static (top-left)
+        ctx.drawImage(assets.donut, 20, 20, 60, 60);
+
+        // Draw Allen (the player)
+        ctx.drawImage(assets.allen, allenX, allenY, allenW, allenH);
+
+        requestAnimationFrame(loop);
+      }
+      requestAnimationFrame(loop);
+    }
+  </script>
+</body>
+</html>
