@@ -300,10 +300,11 @@ function update(dt) {
     // Spike collision: -1 life with invulnerability
     const spikeRect = { x: s.x, y: s.y, w: s.w, h: s.h };
     if (!player.invincible && rectsOverlap(playerRect, spikeRect)) {
+      if (lives > 0) {
       lives -= 1;
       player.invincible = true;
-      player.invTimer = 1.0; // 1 second invincibility vs spikes
-      if (lives < 0) {
+      player.invTimer = 1.0;
+    } else {
         saveHighScore();
         gameOver = true;
         break;
@@ -398,32 +399,14 @@ function drawHUD() {
 
   // Lives as donuts
   const lifeSize = 30;
-  for (let i = 0; i < Math.max(0, lives + 1); i++) {
+  for (let i = 0; i < lives; i++) {
     const x = WIDTH - (i + 1) * (lifeSize + 10);
     const y = 20;
     ctx.drawImage(assets.allen, x, y, lifeSize, lifeSize);
-  }
+  }  
 }
 
 function drawOverlays() {
-  if (!gameStarted && !gameOver) {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "32px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("Allen Simulator", WIDTH / 2, HEIGHT / 2 - 60);
-
-    ctx.font = "20px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-    ctx.fillText("Drag like a joystick to move Allen (he sits above your finger).", WIDTH / 2, HEIGHT / 2 - 20);
-    ctx.fillText("Spikes move right to left – hit = -1 life.", WIDTH / 2, HEIGHT / 2 + 10);
-    ctx.fillText("Donut every 5 points = extra life.", WIDTH / 2, HEIGHT / 2 + 40);
-    ctx.fillText("Keiran every 10 points, instant kill if he hits you.", WIDTH / 2, HEIGHT / 2 + 70);
-    ctx.fillText("Tap to start.", WIDTH / 2, HEIGHT / 2 + 100);
-
-    ctx.textAlign = "left";
-  }
 
   if (gameOver) {
     ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
