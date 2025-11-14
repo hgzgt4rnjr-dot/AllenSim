@@ -301,7 +301,7 @@ function update(dt) {
   /* circular hitbox for Allen */
   const playerCenterX = player.x + player.w / 2;
   const playerCenterY = player.y + player.h / 2;
-  const playerRadius  = Math.min(player.w, player.h) / 2.6;
+  const playerRadius  = Math.min(player.w, player.h) / 2.4;
 
   // Move spikes right -> left, wrap back to right like asteroids belt
 
