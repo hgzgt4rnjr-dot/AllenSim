@@ -42,37 +42,28 @@ let player = {
 let lives = 3;
 const MAX_LIVES = 5;
 
-let score = 0;
+let score = 0;          // in seconds, continuous
+let lastScoreInt = 0;   // last integer score we processed for events
 let highScore = 0;
 let lastTimestamp = null;
 
-// Difficulty tracking (for events)
-let lastDonutScoreStep = -1;   // floor(score / 5) last used
-let lastKeiranScoreStep = -1;  // floor(score / 10) last used
-
-// ====== Spikes ======
+// ====== Spikes (asteroids style, right -> left) ======
 const SPIKE_COUNT = 8;
 const SPIKE_SIZE = 40;
-
+let spikeSpeed = 200;     // px/sec base
 let spikes = [];
 
-// ====== Keiran ======
-let keiran = {
-  active: false,
-  x: 0,
-  y: 0,
-  w: 130,
-  h: 140,
-  baseSpeed: 150
-};
+// ====== Keiran (right -> left, same size as Allen) ======
+let enemySpeed = 250;     // px/sec base
+let enemies = [];         // we’ll keep max 1, but use array to mirror original
 
 // ====== Donut ======
 let donut = {
   active: false,
   x: 0,
   y: 0,
-  w: 70,
-  h: 70
+  w: 40,
+  h: 40
 };
 
 // ====== Utility ======
@@ -111,27 +102,49 @@ function saveHighScore() {
 function initSpikes() {
   spikes = [];
   for (let i = 0; i < SPIKE_COUNT; i++) {
-    const x = randRange(0, WIDTH - SPIKE_SIZE);
+    const x = WIDTH + i * 200;
     const y = randRange(0, HEIGHT - SPIKE_SIZE);
-    let vx = randRange(-120, 120);
-    let vy = randRange(-120, 120);
-    if (Math.abs(vx) < 40) vx = vx < 0 ? -40 : 40;
-    if (Math.abs(vy) < 40) vy = vy < 0 ? -40 : 40;
-    spikes.push({ x, y, w: SPIKE_SIZE, h: SPIKE_SIZE, vx, vy });
+    spikes.push({
+      x,
+      y,
+      w: SPIKE_SIZE,
+      h: SPIKE_SIZE
+    });
   }
 }
 
-// ====== Player control (touch + mouse) ======
-function movePlayerToClientPoint(clientX, clientY) {
-  const rect = canvas.getBoundingClientRect();
-  const x = clientX - rect.left;
-  const y = clientY - rect.top;
+// ====== Player control (relative joystick style) ======
+let touchActive = false;
+let touchStartX = 0;
+let touchStartY = 0;
+let playerStartX = 0;
+let playerStartY = 0;
 
-  player.x = x - player.w / 2;
-  player.y = y - player.h / 2 - FINGER_OFFSET_Y;
+function beginControl(clientX, clientY) {
+  touchActive = true;
+  touchStartX = clientX;
+  touchStartY = clientY;
+  // capture current player position so movement is relative
+  playerStartX = player.x;
+  playerStartY = player.y;
+}
 
+function updateControl(clientX, clientY) {
+  if (!touchActive) return;
+  const dx = clientX - touchStartX;
+  const dy = clientY - touchStartY;
+
+  // Relative movement from original position
+  player.x = playerStartX + dx;
+  player.y = playerStartY + dy - FINGER_OFFSET_Y; // keep Allen above finger
+
+  // clamp to screen
   player.x = clamp(player.x, 0, WIDTH - player.w);
   player.y = clamp(player.y, 0, HEIGHT - player.h);
+}
+
+function endControl() {
+  touchActive = false;
 }
 
 // Touch
@@ -139,12 +152,13 @@ canvas.addEventListener(
   "touchstart",
   (e) => {
     e.preventDefault();
+    const t = e.touches[0];
+    if (!t) return;
+
     if (!gameStarted || gameOver) {
       startOrRestart();
-      return;
     }
-    const t = e.touches[0];
-    if (t) movePlayerToClientPoint(t.clientX, t.clientY);
+    beginControl(t.clientX, t.clientY);
   },
   { passive: false }
 );
@@ -155,28 +169,38 @@ canvas.addEventListener(
     e.preventDefault();
     if (!gameStarted || gameOver) return;
     const t = e.touches[0];
-    if (t) movePlayerToClientPoint(t.clientX, t.clientY);
+    if (!t) return;
+    updateControl(t.clientX, t.clientY);
   },
   { passive: false }
 );
 
-// Mouse (desktop)
+canvas.addEventListener(
+  "touchend",
+  (e) => {
+    e.preventDefault();
+    endControl();
+  },
+  { passive: false }
+);
+
+// Mouse (desktop testing, same idea)
 let mouseDown = false;
 canvas.addEventListener("mousedown", (e) => {
   if (!gameStarted || gameOver) {
     startOrRestart();
-    return;
   }
   mouseDown = true;
-  movePlayerToClientPoint(e.clientX, e.clientY);
+  beginControl(e.clientX, e.clientY);
 });
 window.addEventListener("mouseup", () => {
   mouseDown = false;
+  endControl();
 });
 canvas.addEventListener("mousemove", (e) => {
   if (!mouseDown) return;
   if (!gameStarted || gameOver) return;
-  movePlayerToClientPoint(e.clientX, e.clientY);
+  updateControl(e.clientX, e.clientY);
 });
 
 // ====== Start / restart ======
@@ -184,56 +208,75 @@ function startOrRestart() {
   gameStarted = true;
   gameOver = false;
   score = 0;
+  lastScoreInt = 0;
   lives = 3;
+
   player.invincible = false;
   player.invTimer = 0;
 
   donut.active = false;
-  keiran.active = false;
-  lastDonutScoreStep = -1;
-  lastKeiranScoreStep = -1;
+  enemies = [];
+
+  spikeSpeed = 200;
+  enemySpeed = 250;
 
   initSpikes();
   lastTimestamp = null;
 }
 
-// ====== Spawn helpers ======
+// ====== Spawning ======
 function spawnDonut() {
   donut.active = true;
-  donut.x = randRange(40, WIDTH - 40 - donut.w);
-  donut.y = randRange(60, HEIGHT - 60 - donut.h);
+  donut.x = randRange(0, WIDTH - donut.w);
+  donut.y = randRange(0, HEIGHT - donut.h);
 }
 
 function spawnKeiran() {
-  keiran.active = true;
+  // Only spawn a new Keiran if none on screen
+  if (enemies.length > 0) return;
 
-  // Spawn at a random edge
-  const edge = Math.floor(Math.random() * 4); // 0: left, 1: right, 2: top, 3: bottom
-  if (edge === 0) {
-    keiran.x = -keiran.w - 20;
-    keiran.y = randRange(40, HEIGHT - 40 - keiran.h);
-  } else if (edge === 1) {
-    keiran.x = WIDTH + 20;
-    keiran.y = randRange(40, HEIGHT - 40 - keiran.h);
-  } else if (edge === 2) {
-    keiran.x = randRange(40, WIDTH - 40 - keiran.w);
-    keiran.y = -keiran.h - 20;
-  } else {
-    keiran.x = randRange(40, WIDTH - 40 - keiran.w);
-    keiran.y = HEIGHT + 20;
-  }
+  const x = WIDTH + PLAYER_WIDTH; // just off the right side
+  const y = randRange(0, HEIGHT - PLAYER_HEIGHT);
+  enemies.push({
+    x,
+    y,
+    w: PLAYER_WIDTH,
+    h: PLAYER_HEIGHT
+  });
 }
 
 // ====== Main update ======
 function update(dt) {
   if (!gameStarted || gameOver) return;
 
-  // Update score
+  // Update continuous score
   score += dt;
 
-  // Difficulty scaling
-  const speedStep = Math.floor(score / 10); // 0–9 => 0, 10–19 => 1, etc.
-  const speedMultiplier = 1 + speedStep * 0.25;
+  const scoreInt = Math.floor(score);
+
+  // Trigger once-per-second events like original frame_count logic
+  if (scoreInt > lastScoreInt) {
+    lastScoreInt = scoreInt;
+
+    // Donut every 5 points, if none currently visible
+    if (scoreInt > 0 && scoreInt % 5 === 0 && !donut.active) {
+      spawnDonut();
+    }
+
+    // Keiran every 10 points
+    if (scoreInt > 0 && scoreInt % 10 === 0) {
+      spawnKeiran();
+      // Every 10 points, also speed up spikes and Keiran slightly
+      spikeSpeed += 20;
+      enemySpeed += 25;
+    }
+
+    // High score update
+    if (scoreInt > highScore) {
+      highScore = scoreInt;
+      localStorage.setItem("allen_high_score", String(highScore));
+    }
+  }
 
   // Invincibility timer (for spikes only)
   if (player.invincible) {
@@ -244,81 +287,27 @@ function update(dt) {
     }
   }
 
-  // Move spikes
-  for (const s of spikes) {
-    s.x += s.vx * dt * speedMultiplier;
-    s.y += s.vy * dt * speedMultiplier;
-
-    // bounce off walls
-    if (s.x < 0) {
-      s.x = 0;
-      s.vx *= -1;
-    } else if (s.x + s.w > WIDTH) {
-      s.x = WIDTH - s.w;
-      s.vx *= -1;
-    }
-
-    if (s.y < 0) {
-      s.y = 0;
-      s.vy *= -1;
-    } else if (s.y + s.h > HEIGHT) {
-      s.y = HEIGHT - s.h;
-      s.vy *= -1;
-    }
-  }
-
-  // Donut spawn every 5 points
-  const donutStep = Math.floor(score / 5); // 0,1,2... each = a new event
-  if (donutStep > lastDonutScoreStep) {
-    lastDonutScoreStep = donutStep;
-    if (!donut.active && donutStep > 0) {
-      spawnDonut();
-    }
-  }
-
-  // Keiran spawn every 10 points
-  const keiranStep = Math.floor(score / 10);
-  if (keiranStep > lastKeiranScoreStep) {
-    lastKeiranScoreStep = keiranStep;
-    if (!keiran.active && keiranStep > 0) {
-      keiran.baseSpeed = 150 + keiranStep * 30;
-      spawnKeiran();
-    }
-  }
-
-  // Keiran movement: go out of his way to hunt Allen
-  if (keiran.active) {
-    const px = player.x + player.w / 2;
-    const py = player.y + player.h / 2;
-    const kx = keiran.x + keiran.w / 2;
-    const ky = keiran.y + keiran.h / 2;
-
-    let dx = px - kx;
-    let dy = py - ky;
-    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-
-    dx /= dist;
-    dy /= dist;
-
-    const speed = keiran.baseSpeed * speedMultiplier;
-    keiran.x += dx * speed * dt;
-    keiran.y += dy * speed * dt;
-  }
-
   const playerRect = { x: player.x, y: player.y, w: player.w, h: player.h };
 
-  // Spike collisions: lose 1 life (with invincibility window)
+  // Move spikes right -> left, wrap back to right like asteroids belt
   for (const s of spikes) {
+    s.x -= spikeSpeed * dt;
+    if (s.x < -s.w) {
+      s.x = WIDTH + randRange(100, 300);
+      s.y = randRange(0, HEIGHT - s.h);
+    }
+
+    // Spike collision: -1 life with invulnerability
     const spikeRect = { x: s.x, y: s.y, w: s.w, h: s.h };
-    if (rectsOverlap(playerRect, spikeRect) && !player.invincible) {
+    if (!player.invincible && rectsOverlap(playerRect, spikeRect)) {
       lives -= 1;
       player.invincible = true;
-      player.invTimer = 1.0; // 1 sec of invincibility vs spikes
+      player.invTimer = 1.0; // 1 second invincibility vs spikes
       if (lives < 0) {
         saveHighScore();
         gameOver = true;
+        break;
       }
-      break;
     }
   }
 
@@ -333,14 +322,37 @@ function update(dt) {
     }
   }
 
-  // Keiran collision: instant death
-  if (keiran.active) {
-    const kRect = { x: keiran.x, y: keiran.y, w: keiran.w, h: keiran.h };
-    if (rectsOverlap(playerRect, kRect)) {
+  // Move Keiran (right -> left, slight vertical tracking)
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+
+    // horizontal movement
+    e.x -= enemySpeed * dt;
+
+    // vertical tracking: move a bit toward player's y
+    const targetY = player.y;
+    const dy = targetY - e.y;
+    e.y += dy * 0.03; // similar to original: slight tracking
+
+    const enemyRect = { x: e.x, y: e.y, w: e.w, h: e.h };
+
+    // collision with Allen: instant death
+    if (rectsOverlap(playerRect, enemyRect)) {
       saveHighScore();
       gameOver = true;
     }
+
+    // if enemy goes off screen to the left or too far off vertical, remove
+    if (e.x < -e.w || e.y < -e.h || e.y > HEIGHT) {
+      enemies.splice(i, 1);
+    }
   }
+
+  // Mirror HUD into status element so you always see score/lives
+  statusEl.textContent = `Score: ${scoreInt}   High: ${highScore}   Lives: ${Math.max(
+    0,
+    lives + 1
+  )}`;
 }
 
 // ====== Draw ======
@@ -368,7 +380,7 @@ function drawBackground() {
 function drawSpikes() {
   ctx.fillStyle = "#ff5252";
   for (const s of spikes) {
-    // draw triangle spike
+    // simple triangle spike
     ctx.beginPath();
     ctx.moveTo(s.x + s.w / 2, s.y);           // top
     ctx.lineTo(s.x, s.y + s.h);              // bottom left
@@ -379,15 +391,17 @@ function drawSpikes() {
 }
 
 function drawHUD() {
+  const scoreInt = Math.floor(score);
+
   ctx.fillStyle = "#ffffff";
   ctx.font = "20px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
   ctx.textAlign = "left";
-  ctx.fillText("Score: " + Math.floor(score), 20, 30);
-  ctx.fillText("High: " + Math.floor(highScore), 20, 55);
+  ctx.fillText("Score: " + scoreInt, 20, 30);
+  ctx.fillText("High: " + highScore, 20, 55);
 
   // Lives as donuts
   const lifeSize = 30;
-  for (let i = 0; i < Math.max(0, lives + 1); i++) { // lives can be -1 briefly, clamp
+  for (let i = 0; i < Math.max(0, lives + 1); i++) {
     const x = WIDTH - (i + 1) * (lifeSize + 10);
     const y = 20;
     ctx.drawImage(assets.donut, x, y, lifeSize, lifeSize);
@@ -405,10 +419,11 @@ function drawOverlays() {
     ctx.fillText("Allen Simulator", WIDTH / 2, HEIGHT / 2 - 60);
 
     ctx.font = "20px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-    ctx.fillText("Drag your finger to move Allen (he sits above your finger).", WIDTH / 2, HEIGHT / 2 - 20);
-    ctx.fillText("Every 5 points: donut = +1 life.", WIDTH / 2, HEIGHT / 2 + 10);
-    ctx.fillText("Every 10 points: Keiran spawns and hunts you.", WIDTH / 2, HEIGHT / 2 + 40);
-    ctx.fillText("Avoid moving spikes and Keiran. Tap to start.", WIDTH / 2, HEIGHT / 2 + 80);
+    ctx.fillText("Drag like a joystick to move Allen (he sits above your finger).", WIDTH / 2, HEIGHT / 2 - 20);
+    ctx.fillText("Spikes move right to left – hit = -1 life.", WIDTH / 2, HEIGHT / 2 + 10);
+    ctx.fillText("Donut every 5 points = extra life.", WIDTH / 2, HEIGHT / 2 + 40);
+    ctx.fillText("Keiran every 10 points, instant kill if he hits you.", WIDTH / 2, HEIGHT / 2 + 70);
+    ctx.fillText("Tap to start.", WIDTH / 2, HEIGHT / 2 + 100);
 
     ctx.textAlign = "left";
   }
@@ -425,7 +440,7 @@ function drawOverlays() {
     ctx.fillStyle = "#ffffff";
     ctx.font = "22px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
     ctx.fillText("Score: " + Math.floor(score), WIDTH / 2, HEIGHT / 2);
-    ctx.fillText("High Score: " + Math.floor(highScore), WIDTH / 2, HEIGHT / 2 + 30);
+    ctx.fillText("High Score: " + highScore, WIDTH / 2, HEIGHT / 2 + 30);
     ctx.fillText("Tap to restart.", WIDTH / 2, HEIGHT / 2 + 70);
 
     ctx.textAlign = "left";
@@ -435,7 +450,7 @@ function drawOverlays() {
 function draw() {
   drawBackground();
 
-  // Spikes
+  // Spikes (right -> left)
   drawSpikes();
 
   // Donut
@@ -443,12 +458,12 @@ function draw() {
     ctx.drawImage(assets.donut, donut.x, donut.y, donut.w, donut.h);
   }
 
-  // Keiran
-  if (keiran.active) {
-    ctx.drawImage(assets.keiran, keiran.x, keiran.y, keiran.w, keiran.h);
+  // Keiran(s)
+  for (const e of enemies) {
+    ctx.drawImage(assets.keiran, e.x, e.y, e.w, e.h);
   }
 
-  // Player (Allen)
+  // Allen
   if (player.invincible) {
     if (Math.floor(player.invTimer * 10) % 2 === 0) {
       ctx.globalAlpha = 0.4;
@@ -479,7 +494,7 @@ function onAssetLoaded() {
   assetsLoaded += 1;
   statusEl.textContent = `Loading… ${assetsLoaded}/${totalAssets}`;
   if (assetsLoaded === totalAssets) {
-    statusEl.textContent = "Tap to start. Drag to move Allen.";
+    statusEl.textContent = "Tap to start. Drag like a joystick to move Allen.";
     loadHighScore();
     initSpikes();
     requestAnimationFrame(loop);
