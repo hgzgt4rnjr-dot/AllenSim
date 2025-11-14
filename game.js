@@ -82,6 +82,17 @@ function rectsOverlap(a, b) {
   );
 }
 
+function circleRectOverlap(cx, cy, r, rect) {
+  const closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+  const closestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+
+  const dx = cx - closestX;
+  const dy = cy - closestY;
+
+  return (dx * dx + dy * dy) < (r * r);
+}
+
+
 function randRange(min, max) {
   return min + Math.random() * (max - min);
 }
@@ -287,16 +298,13 @@ function update(dt) {
     }
   }
 
-  const playerHitPadX = 10;
-  const playerHitPadY = 15;
-  const playerRect = {
-    x: player.x + playerHitPadX,
-    y: player.y + playerHitPadY,
-    w: player.w - playerHitPadX * 2,
-    h: player.h - playerHitPadY * 2
-  };
+  /* circular hitbox for Allen */
+  const playerCenterX = player.x + player.w / 2;
+  const playerCenterY = player.y + player.h / 2;
+  const playerRadius  = Math.min(player.w, player.h) / 2.3;
 
   // Move spikes right -> left, wrap back to right like asteroids belt
+
   for (const s of spikes) {
     s.x -= spikeSpeed * dt;
     if (s.x < -s.w) {
@@ -306,12 +314,12 @@ function update(dt) {
 
     // Spike collision: -1 life with invulnerability
     const spikeRect = { x: s.x, y: s.y, w: s.w, h: s.h };
-    if (!player.invincible && rectsOverlap(playerRect, spikeRect)) {
+    if (!player.invincible && circleRectOverlap(playerCenterX, playerCenterY, playerRadius, spikeRect)) {
       if (lives > 0) {
-      lives -= 1;
-      player.invincible = true;
-      player.invTimer = 1.0;
-    } else {
+        lives -= 1;
+        player.invincible = true;
+        player.invTimer = 1.0;
+      } else {
         saveHighScore();
         gameOver = true;
         break;
@@ -351,8 +359,8 @@ function update(dt) {
       h: e.h - enemyHitPadY * 2
     };
 
-    // collision with Allen: instant death
-    if (rectsOverlap(playerRect, enemyRect)) {
+    // collision with Allen: instant death (Allen is circular)
+    if (circleRectOverlap(playerCenterX, playerCenterY, playerRadius, enemyRect)) {
       saveHighScore();
       gameOver = true;
     }
