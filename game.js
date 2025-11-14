@@ -287,7 +287,14 @@ function update(dt) {
     }
   }
 
-  const playerRect = { x: player.x, y: player.y, w: player.w, h: player.h };
+  const playerHitPadX = 10;
+  const playerHitPadY = 15;
+  const playerRect = {
+    x: player.x + playerHitPadX,
+    y: player.y + playerHitPadY,
+    w: player.w - playerHitPadX * 2,
+    h: player.h - playerHitPadY * 2
+  };
 
   // Move spikes right -> left, wrap back to right like asteroids belt
   for (const s of spikes) {
@@ -335,7 +342,14 @@ function update(dt) {
     const dy = targetY - e.y;
     e.y += dy * 0.03; // similar to original: slight tracking
 
-    const enemyRect = { x: e.x, y: e.y, w: e.w, h: e.h };
+    const enemyHitPadX = 10;
+    const enemyHitPadY = 15;
+    const enemyRect = {
+      x: e.x + enemyHitPadX,
+      y: e.y + enemyHitPadY,
+      w: e.w - enemyHitPadX * 2,
+      h: e.h - enemyHitPadY * 2
+    };
 
     // collision with Allen: instant death
     if (rectsOverlap(playerRect, enemyRect)) {
@@ -344,6 +358,7 @@ function update(dt) {
     }
 
     // if enemy goes off screen to the left or too far off vertical, remove
+
     if (e.x < -e.w || e.y < -e.h || e.y > HEIGHT) {
       enemies.splice(i, 1);
     }
@@ -408,6 +423,18 @@ function drawHUD() {
 
 function drawOverlays() {
 
+  if (!gameStarted && !gameOver) {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "24px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("Tap to Play", WIDTH / 2, HEIGHT / 2);
+
+    ctx.textAlign = "left";
+  }
+
   if (gameOver) {
     ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -426,6 +453,7 @@ function drawOverlays() {
     ctx.textAlign = "left";
   }
 }
+
 
 function draw() {
   drawBackground();
