@@ -50,7 +50,7 @@ let lastTimestamp = null;
 // ====== Spikes (asteroids style, right -> left) ======
 const SPIKE_COUNT = 8;
 const SPIKE_SIZE = 40;
-let spikeSpeed = 200;     // px/sec base
+let spikeSpeed = 320;     // px/sec base
 let spikes = [];
 
 // ====== Keiran (right -> left, same size as Allen) ======
