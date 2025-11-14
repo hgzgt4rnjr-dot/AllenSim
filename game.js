@@ -510,7 +510,7 @@ function onAssetLoaded() {
   assetsLoaded += 1;
   statusEl.textContent = `Loading… ${assetsLoaded}/${totalAssets}`;
   if (assetsLoaded === totalAssets) {
-    statusEl.textContent = "Tap to start. Drag like a joystick to move Allen.";
+    statusEl.style.display = "none";
     loadHighScore();
     initSpikes();
     requestAnimationFrame(loop);
